@@ -22,6 +22,10 @@ maxsaves=\"10\"
 	exit
 }
 
+[ -z "$(which jq)" ] \
+	&& echo "jq json command processor not found, please type 'apt install -y jq'" \
+	&& exit -1
+
 services="$(echo ${servicesdir}/*/ | tr ' ' '\n' | rev | cut -d/ -f2 | cut -d. -f1 | rev | tr '\n' ' ')"
 
 function start {
