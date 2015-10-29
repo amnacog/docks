@@ -218,7 +218,7 @@ function log {
 }
 
 function updateme {
-	curl -skL "https://raw.githubusercontent.com/Amnacog/docks/${1:-master}/docks.sh" > $origin/$script:
+	curl -skL "https://raw.githubusercontent.com/Amnacog/docks/${1:-master}/docks.sh" > $origin/$script
 }
 
 function waiter {
@@ -255,13 +255,13 @@ Options:
 \e[0;33mstart|stop|restart \e[3;34m<services> \e[0m: Manipulations around services
 \t\e[2;35m[--rm|-r]\t\e[0m: Erase the previously running container if so
 \t\e[2;35m[--verbose|-v]\t\e[0m: Display the verbose output (behind the scenes)
-\e[0;33mbuild \e[3;34m<services>\e[0m\t\t: Build the service with docker of choosen service
-\e[0;33mreset \e[3;34m<services>\e[0m\t\t: Stop the container, rebuild and start it
+\e[0;33mbuild \e[3;34m<services>\e[0m\t: Build the service with docker of choosen service
+\e[0;33mreset \e[3;34m<services>\e[0m\t: Stop the container, rebuild and start it
 \e[0;33mstatus \e[3;34m<services>\e[0m\t: Sh ow the running services
 \e[0;33menter  \e[3;34m<services>\e[0m\t: Enter interactivly inside containers
 \e[0;33mupdate \e[0m\t\t\t: Update the containers resolve ip's
 \e[0;33mlist \e[2;35m[-c]\e[0m\t\t: List the availables services
-\e[0;33mlog \e[2;35m[--color|-c]\e[0m\t\t: Logging containers
+\e[0;33mlog \e[2;35m[--color|-c]\e[0m\t: Logging containers
 \noffered apps: $services"
 }
 
