@@ -218,7 +218,7 @@ function log {
 }
 
 function updateme {
-	curl -skL "https://raw.githubusercontent.com/Amnacog/docks/${2:-master}/docks.sh" > $origin/$script
+	curl -skL "https://raw.githubusercontent.com/Amnacog/docks/${1:-master}/docks.sh" > $origin/$script:
 }
 
 function waiter {
