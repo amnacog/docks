@@ -22,10 +22,6 @@ maxsaves=\"10\"
 	exit
 }
 
-[ -z "$(which jq)" ] \
-	&& echo "jq json command processor not found, please type 'apt install -y jq'" \
-	&& exit -1
-
 services="$(echo ${servicesdir}/*/ | tr ' ' '\n' | rev | cut -d/ -f2 | cut -d. -f1 | rev | tr '\n' ' ')"
 
 function start {
@@ -260,8 +256,8 @@ Options:
 \e[0;33mstatus \e[3;34m<services>\e[0m\t: Sh ow the running services
 \e[0;33menter  \e[3;34m<services>\e[0m\t: Enter interactivly inside containers
 \e[0;33mupdate \e[0m\t\t\t: Update the containers resolve ip's
-\e[0;33mlist [--color|-c]\e[0m\t\t: List the availables services
-\e[0;33mlog [--color|-c]\e[0m\t\t: Logging containers
+\e[0;33mlist \e[2;35m[-c]\e[0m\t\t: List the availables services
+\e[0;33mlog \e[2;35m[--color|-c]\e[0m\t\t: Logging containers
 \noffered apps: $services"
 }
 
