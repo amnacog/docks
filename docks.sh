@@ -5,12 +5,12 @@ script=$(basename $(echo $0))
 origin=$PWD
 shell=$(basename $(echo $SHELL))
 
-[ ! -w $origin ] && origin="$HOME"
 
-[ -f $origin/.Cdocks ] && {
-	source $origin/.Cdocks
+([ ! -f $origin/.docks-config ] && [ ! -w $origin ]) && conf_dir="$HOME" || conf_dir="$origin"
+[ -f $conf_dir/.docks-config ] && {
+	source $conf_dir/.docks-config
 } || {
-	echo -e "Writing new configuration file in '$origin/.Cdocks'\nPlease change the configuration.."
+	echo -e "Writing new configuration file in '$conf_dir/.docks-config'\nPlease change the configuration.."
 	echo -e "prefix=\"docks.\"
 provider=\"docks\"
 backupdir=\"/sample/backups\"
@@ -18,7 +18,7 @@ servicesdir=\"/sample/services\"
 builddir=\"/sample/build\"
 logsdir=\"/sample/log\"
 maxsaves=\"10\"
-" > $origin/.Cdocks
+" > $conf_dir/.docks-config
 	exit
 }
 
@@ -160,8 +160,8 @@ function backup {
 		service="$services"
 	fi
 
-	[ ! -f $origin/.hashbdb ] && echo "{}" > $origin/.hashbdb
-	hashbdb="$(cat $origin/.hashbdb)"
+	[ ! -f $conf_dir/.docks-hashbdb ] && echo "{}" > $conf_dir/.docks-hashbdb
+	hashbdb="$(cat $conf_dir/.docks-hashbdb)"
 
 	for service in $service; do
 		if cd $servicesdir/${prefix}$service && [ -f INFO ] && source INFO && [ ! -z "$BACKUP_DIRS" ]; then
@@ -182,7 +182,7 @@ function backup {
 				$update && {
 					[ ! -d ${backupdir}/${prefix}${service} ] && waiter mkdir -p ${backupdir}/${prefix}${service} "$service -> creating folder" ||mbackup "$service" "$dirslug"
 					waiter tar cf ${backupdir}/${prefix}${service}/${dirslug}.tar.gz ./$VOLUME_DIR/$dir "$service -> Storing $dirslug"
-					hashbdb=$(echo "$hashbdb" | jq -r ".${service}.${dirslug} = \"$ha\"" | tee $origin/.hashbdb)
+					hashbdb=$(echo "$hashbdb" | jq -r ".${service}.${dirslug} = \"$ha\"" | tee $conf_dir/.docks-hashbdb)
 				}
 			done
 			ha="$(find INFO Dockerfile start* -type f -exec md5sum {} \; | sort -k 34 | md5sum | cut -d' ' -f1)"
@@ -191,7 +191,7 @@ function backup {
 			if [ "$storedhash" == "null" ] || [ "$storedhash" != "$ha" ]; then
 				[ ! -d ${backupdir}/${prefix}${service} ] && waiter mkdir -p ${backupdir}/${prefix}${service} "$service -> creating folder" || mbackup "$service" "$dirslug"
 				waiter tar cf ${backupdir}/${prefix}${service}/configuration.tar.gz INFO Dockerfile start* "$service -> Storing configuration"
-				hashbdb=$(echo "$hashbdb" | jq -r ".${service}.configuration = \"$ha\"" | tee $origin/.hashbdb)
+				hashbdb=$(echo "$hashbdb" | jq -r ".${service}.configuration = \"$ha\"" | tee $conf_dir/.docks-hashbdb)
 			fi
 			unset VOLUME_DIR BACKUP_DIRS BACKUP_CMD
 		fi
@@ -215,6 +215,10 @@ function log {
 		cd $servicesdir/${prefix}$1 && source INFO && export $(cut -d= -f1 INFO | grep -v \#) && cd - >/dev/null
 		docker logs -f ${prefix}$NAME | $a $b $c
 	fi
+}
+
+function updateme {
+	curl -skL "https://raw.githubusercontent.com/Amnacog/docks/${2:-master}/docks.sh" > $origin/$script
 }
 
 function waiter {
@@ -274,6 +278,7 @@ function main {
 		log)log $2;;
 		list)echo ${services[@]};;
 		backup)backup $2;;
+		self-update)waiter updateme $2 "Upgrading docks";;
 		*)help;;
 	esac
 }
