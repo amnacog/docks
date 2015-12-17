@@ -13,7 +13,7 @@ shell=$(basename $(echo $SHELL))
 	echo -e "Writing new configuration file in '$conf_dir/.docks-config'\nPlease change the configuration.."
 	echo -e "prefix=\"docks.\"
 provider=\"docks\"
-backbucket=\"backup\"
+backbucket=\"\"
 backupdir=\"/sample/backups\"
 servicesdir=\"/sample/services\"
 builddir=\"/sample/build\"
@@ -183,7 +183,7 @@ function backup {
 				$update && {
 					[ ! -d ${backupdir}/${prefix}${service} ] && waiter mkdir -p ${backupdir}/${prefix}${service} "$service -> creating folder" ||mbackup "$service" "$dirslug"
 					waiter tar cf ${backupdir}/${prefix}${service}/${dirslug}.tar.gz ./$VOLUME_DIR/$dir "$service -> Storing $dirslug"
-					waiter aws s3 sync --dryrun --exclude '*' --include "${backupdir}/${prefix}${service}/${dirslug}.tar.gz" . s3://$backbucket "$service -> uploading to s3"
+					[ ! -z "$backbucket" ] && aws s3 sync --dryrun --exclude '*' --include "${backupdir}/${prefix}${service}/${dirslug}.tar.gz" . "s3://$backbucket"
 					hashbdb=$(echo "$hashbdb" | jq -r ".${service}.${dirslug} = \"$ha\"" | tee $conf_dir/.docks-hashbdb)
 				}
 			done
@@ -193,7 +193,7 @@ function backup {
 			if [ "$storedhash" == "null" ] || [ "$storedhash" != "$ha" ]; then
 				[ ! -d ${backupdir}/${prefix}${service} ] && waiter mkdir -p ${backupdir}/${prefix}${service} "$service -> creating folder" || mbackup "$service" "$dirslug"
 				waiter tar cf ${backupdir}/${prefix}${service}/configuration.tar.gz INFO Dockerfile start* "$service -> Storing configuration"
-				waiter aws s3 sync --dryrun --exclude '*' --include "${backupdir}/${prefix}${service}/configuration.tar.gz" . s3://$backbucket "$service -> uploading to s3"
+				[ ! -z "$backbucket" ] && aws s3 sync --dryrun --exclude '*' --include "${backupdir}/${prefix}${service}/configuration.tar.gz" . "s3://$backbucket"
 				hashbdb=$(echo "$hashbdb" | jq -r ".${service}.configuration = \"$ha\"" | tee $conf_dir/.docks-hashbdb)
 			fi
 			unset VOLUME_DIR BACKUP_DIRS BACKUP_CMD
