@@ -135,9 +135,11 @@ ff02::2		ip6-allrouters
 	done
 
 	if [ "$writehost" == "true" ]; then
-		roothosts="$(cat /etc/hosts | sed '/##services/q')"
-		if echo "$roothosts" | grep "##service" &>/dev/null; then
+		roothosts="$(cat /etc/hosts | sed '/##docks/q')"
+		if echo "$roothosts" | grep "##docks" &>/dev/null; then
 			echo -e "${roothosts}\n${hosts}" > /etc/hosts
+		else
+			echo -e "\n##docks\n${hosts}" >> /etc/hosts
 		fi
 	fi
 
