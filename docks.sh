@@ -4,7 +4,7 @@ cd $(dirname $0)
 script=$(basename $(echo $0))
 origin=$PWD
 shell=$(basename $(echo $SHELL))
-
+[ "$HOME" == "/" ] && export HOME="/root"
 
 ([ ! -f $origin/.docks-config ] && [ ! -w $origin ]) && conf_dir="$HOME" || conf_dir="$origin"
 [ -f $conf_dir/.docks-config ] && {
@@ -19,6 +19,7 @@ servicesdir=\"/sample/services\"
 builddir=\"/sample/build\"
 logsdir=\"/sample/log\"
 maxsaves=\"10\"
+writehost=\"true\"
 " > $conf_dir/.docks-config
 	exit
 }
@@ -62,9 +63,9 @@ function stop {
 		cd $servicesdir/${prefix}$1 && source INFO && export $(cut -d= -f1 INFO | grep -v \#) && cd - >/dev/null
 		if [ -d $servicesdir/${prefix}$1 ] && [ ! -z "$(docker ps -a --filter "name=${prefix}$NAME$" --filter status=running -q)" ]; then
 			waiter docker stop -t 4 ${prefix}$NAME "Stopping $1 container"
-			$remove && waiter docker rm ${prefix}$NAME "Removing $1 container"
+			$remove && waiter docker rm -f ${prefix}$NAME "Removing $1 container"
 		elif [ ! -z "$(docker ps -a --filter "name=${prefix}$NAME" -aq)" ] && $remove; then
-			$remove && waiter docker rm ${prefix}$NAME "removing $1 container (dead)"
+			$remove && waiter docker rm -f ${prefix}$NAME "removing $1 container (dead)"
 		else
 			echo "<stop> $1 not running."
 		fi
@@ -132,6 +133,14 @@ ff02::2		ip6-allrouters
 		echo "$hosts" | sed "s/replace/$(echo "$conts" | cut -d' ' -f2 | rev | cut -d'.' -f1 | rev)/g" | docker exec -i $(echo "$conts" | cut -d' ' -f1) /bin/bash -c "cat > /etc/hosts$extra"
 		unset extra
 	done
+
+	if [ "$writehost" == "true" ]; then
+		roothosts="$(cat /etc/hosts | sed '/##services/q')"
+		if echo "$roothosts" | grep "##service" &>/dev/null; then
+			echo -e "${roothosts}\n${hosts}" > /etc/hosts
+		fi
+	fi
+
 	IFS=" "
 }
 
@@ -181,9 +190,9 @@ function backup {
 					fi
 				fi
 				$update && {
-					[ ! -d ${backupdir}/${prefix}${service} ] && waiter mkdir -p ${backupdir}/${prefix}${service} "$service -> creating folder" ||mbackup "$service" "$dirslug"
+					[ ! -d ${backupdir}/${prefix}${service} ] && waiter mkdir -p ${backupdir}/${prefix}${service} "$service -> creating folder" || mbackup "$service" "$dirslug"
 					waiter tar cf ${backupdir}/${prefix}${service}/${dirslug}.tar.gz ./$VOLUME_DIR/$dir "$service -> Storing $dirslug"
-					[ ! -z "$backbucket" ] && aws s3 sync --dryrun --exclude '*' --include "${backupdir}/${prefix}${service}/${dirslug}.tar.gz" . "s3://$backbucket"
+					[ ! -z "$backbucket" ] && aws s3 sync --exclude '*' --include "${backupdir}/${prefix}${service}/${dirslug}.tar.gz" "${backupdir}" "s3://$backbucket"
 					hashbdb=$(echo "$hashbdb" | jq -r ".${service}.${dirslug} = \"$ha\"" | tee $conf_dir/.docks-hashbdb)
 				}
 			done
@@ -193,7 +202,7 @@ function backup {
 			if [ "$storedhash" == "null" ] || [ "$storedhash" != "$ha" ]; then
 				[ ! -d ${backupdir}/${prefix}${service} ] && waiter mkdir -p ${backupdir}/${prefix}${service} "$service -> creating folder" || mbackup "$service" "$dirslug"
 				waiter tar cf ${backupdir}/${prefix}${service}/configuration.tar.gz INFO Dockerfile start* "$service -> Storing configuration"
-				[ ! -z "$backbucket" ] && aws s3 sync --dryrun --exclude '*' --include "${backupdir}/${prefix}${service}/configuration.tar.gz" . "s3://$backbucket"
+				[ ! -z "$backbucket" ] && aws s3 sync --exclude '*' --include "${backupdir}/${prefix}${service}/configuration.tar.gz" "${backupdir}" "s3://$backbucket"
 				hashbdb=$(echo "$hashbdb" | jq -r ".${service}.configuration = \"$ha\"" | tee $conf_dir/.docks-hashbdb)
 			fi
 			unset VOLUME_DIR BACKUP_DIRS BACKUP_CMD
