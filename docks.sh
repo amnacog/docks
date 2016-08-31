@@ -78,7 +78,7 @@ function build {
 	[ -z "$1" ] && help && exit -1
 	if [ -d $builddir/${prefix}$1 ] && [ -f $builddir/${prefix}$1/Dockerfile ]; then
 		cd $builddir/${prefix}$1 && source INFO && export $(cut -d= -f1 INFO | grep -v \#) NAME="$(echo $NAME | tr _ /)"
-		waiter docker build -t $provider/$NAME:$VERSION $($remove && echo --no-cache) --rm $(echo $OPTS) $builddir/${prefix}$1 "Building $1 image"
+		waiter docker build -t $provider/$NAME:$VERSION $($remove && echo "--no-cache" && echo "-f") --rm $(echo $OPTS) $builddir/${prefix}$1 "Building $1 image"
 		[ ! -z "$VERSION" ] && waiter docker tag $provider/$NAME:$VERSION $provider/$NAME:latest "Configuring $1 image"
 		cd - >/dev/null && unset NAME VERSION OPTS
 	elif [ -d $builddir/${prefix}$1 ] && [ ! -f $builddir/${prefix}$1/Dockerfile ]; then
