@@ -78,7 +78,7 @@ function build {
 	[ -z "$1" ] && help && exit -1
 	if [ -d $builddir/${prefix}$1 ] && [ -f $builddir/${prefix}$1/Dockerfile ]; then
 		cd $builddir/${prefix}$1 && source INFO && export $(cut -d= -f1 INFO | grep -v \#) NAME="$(echo $NAME | tr _ /)"
-		waiter docker build -t $provider/$NAME:$VERSION --rm $(echo $OPTS) $builddir/${prefix}$1 "Building $1 image"
+		waiter docker build -t $provider/$NAME:$VERSION $($remove && echo --no-cache) --rm $(echo $OPTS) $builddir/${prefix}$1 "Building $1 image"
 		[ ! -z "$VERSION" ] && waiter docker tag $provider/$NAME:$VERSION $provider/$NAME:latest "Configuring $1 image"
 		cd - >/dev/null && unset NAME VERSION OPTS
 	elif [ -d $builddir/${prefix}$1 ] && [ ! -f $builddir/${prefix}$1/Dockerfile ]; then
@@ -267,7 +267,7 @@ function help {
 Options:
 
 \e[0;33mstart|stop|restart \e[3;34m<services> \e[0m: Manipulations around services
-\t\e[2;35m[--rm|-r]\t\e[0m: Erase the previously running container if so
+\t\e[2;35m[--rm|-r]\t\e[0m: Erase the previously running container if so / rebuild the image
 \t\e[2;35m[--verbose|-v]\t\e[0m: Display the verbose output (behind the scenes)
 \e[0;33mbuild \e[3;34m<services>\e[0m\t: Build the service with docker of choosen service
 \e[0;33mreset \e[3;34m<services>\e[0m\t: Stop the container, rebuild and start it
