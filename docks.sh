@@ -39,8 +39,15 @@ function start {
 		if ! $remove && [ ! -z "$CONTAINER" ]; then
 			waiter docker start $CONTAINER "Starting $1 container (old)"
 		else
+			bakimg="$IMAGE:$VERSION"
 			export HOST="$(echo "$prefix"| tr '.' '-')$NAME" NAME="${prefix}$NAME"
 			waiter ./start* "Starting $1 container (new)"
+			if [ $ret -ne 0 ]; then
+				export bakori=$IMAGE
+				export IMAGE=$bakimg
+				waiter ./start* "Starting $1 container (new)"
+				waiter docker tag ${provider}/$bakimg ${provider}/$bakori:latest "Tagged $IMAGE to latest"
+			fi
 		fi
 		[ ! -z "$POST_CMD" ] && docker exec ${prefix}${NAME} bash -c "$POST_CMD" &>/dev/null
 		[ ! -z "$POST_OUT_CMD" ] && eval "$POST_OUT_CMD" &>/dev/null
@@ -83,6 +90,26 @@ function build {
 		cd - >/dev/null && unset NAME VERSION OPTS
 	elif [ -d $builddir/${prefix}$1 ] && [ ! -f $builddir/${prefix}$1/Dockerfile ]; then
 		echo "$1 meant to be use by another image."
+	else
+		echo "$1 not found."
+	fi
+}
+
+function push {
+	[ -z "$1" ] && help && exit -1
+	if [ -d $builddir/${prefix}$1 ] && [ -f $builddir/${prefix}$1/INFO ]; then
+		cd $builddir/${prefix}$1 && source INFO && export $(cut -d= -f1 INFO | grep -v \#) NAME="$(echo $NAME | tr _ /)"
+		if ! [ -z "$(docker images ${provider}/${NAME}:${VERSION} -q)" ]; then
+			waiter docker push ${provider}/${NAME}:${VERSION} "Pushing ${NAME}:${VERSION}"
+			if $always; then
+				waiter docker push ${provider}/${NAME}:latest "Pushing ${NAME}:latest"
+			fi
+		else
+			echo "$1 not builded yet."
+			if $force; then
+				build $1
+			fi
+		fi
 	else
 		echo "$1 not found."
 	fi
@@ -270,6 +297,7 @@ Options:
 \t\e[2;35m[--rm|-r]\t\e[0m: Erase the previously running container if so / rebuild the image
 \t\e[2;35m[--verbose|-v]\t\e[0m: Display the verbose output (behind the scenes)
 \e[0;33mbuild \e[3;34m<services>\e[0m\t: Build the service with docker of choosen service
+\e[0;33mpush \e[3;34m<services>\e[0m\t: Push the service of choosen service
 \e[0;33mreset \e[3;34m<services>\e[0m\t: Stop the container, rebuild and start it
 \e[0;33mstatus \e[3;34m<services>\e[0m\t: Sh ow the running services
 \e[0;33menter  \e[3;34m<services>\e[0m\t: Enter interactivly inside containers
@@ -287,6 +315,8 @@ function main {
 		status)status $2;;
 		restart)stop $2;remove=false;start $2;$0 update;;
 		build)build $2;;
+		push)push $2;;
+		tag)tag $2 $3 $4;;
 		update)waiter update "Updating container's ip";;
 		enter)enter $2;;
 		log)log $2;;
@@ -304,6 +334,10 @@ opts="${@:3:$(($#-1))}"
 echo "$opts"|grep -q "\-v\|\-\-verbose" || verbose=false
 echo "$opts"|grep -q "\-r\|\-\-rm" && remove=true || remove=false
 echo "$opts"|grep -q "\-c\|\-\-color" && color=true || color=false
+echo "$opts"|grep -q "\-f\|\-\-force" && force=true || force=false
+echo "$opts"|grep -q "\-a\|\-\-always" && always=true || always=false
+
+export ret;
 
 if [ ! -z "$2" ]; then
 	for arg in ${@:2:$(($#-1))}; do
