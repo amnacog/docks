@@ -99,7 +99,7 @@ function push {
 	[ -z "$1" ] && help && exit -1
 	if [ -d $builddir/${prefix}$1 ] && [ -f $builddir/${prefix}$1/INFO ]; then
 		cd $builddir/${prefix}$1 && source INFO && export $(cut -d= -f1 INFO | grep -v \#) NAME="$(echo $NAME | tr _ /)"
-		if ! [ -z "$(docker images ${provider}/${NAME}:${VERSION} -q)" ]; then
+		if ! [ -z "$(docker images -q ${provider}/${NAME}:${VERSION})" ]; then
 			waiter docker push ${provider}/${NAME}:${VERSION} "Pushing ${NAME}:${VERSION}"
 			if $always; then
 				waiter docker push ${provider}/${NAME}:latest "Pushing ${NAME}:latest"
