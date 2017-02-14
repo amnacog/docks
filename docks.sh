@@ -33,6 +33,10 @@ function start {
 		$remove && waiter docker rm ${prefix}$1 "Removing $1 container"
 		cd $servicesdir/${prefix}$1 && source INFO && \
 		export $(cut -d= -f1 INFO | grep -v \#) IMAGE="$([ -z "$IMAGE" ] && (echo $NAME | tr _ /) || echo $IMAGE)" LOGDIR="$logsdir/${prefix}$NAME"
+		if $force-pull; then
+			VV=$([ -z "$VERSION" ] && echo latest || echo $VERSION)
+			waiter docker pull $IMAGE:$VV
+		fi
 		[ ! -d "$LOGDIR" ] && waiter mkdir -p $LOGDIR "creating logdir for $1"
 		[ ! -z "$PRE_CMD" ] && docker exec ${prefix}${NAME} bash -c "$PRE_CMD" &>/dev/null
 		[ ! -z "$PRE_OUT_CMD" ] && eval "$PRE_OUT_CMD" &>/dev/null
@@ -333,6 +337,7 @@ function main {
 
 opts="${@:3:$(($#-1))}"
 echo "$opts"|grep -q "\-v\|\-\-verbose" || verbose=false
+echo "$opts"|grep -q "\-f\|\-\-force-pull" && force-pull=true || force-pull=false
 echo "$opts"|grep -q "\-r\|\-\-rm" && remove=true || remove=false
 echo "$opts"|grep -q "\-c\|\-\-color" && color=true || color=false
 echo "$opts"|grep -q "\-f\|\-\-force" && force=true || force=false
