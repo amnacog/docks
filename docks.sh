@@ -33,7 +33,7 @@ function start {
 		$remove && waiter docker rm ${prefix}$1 "Removing $1 container"
 		cd $servicesdir/${prefix}$1 && source INFO && \
 		export $(cut -d= -f1 INFO | grep -v \#) IMAGE="$([ -z "$IMAGE" ] && (echo $NAME | tr _ /) || echo $IMAGE)" LOGDIR="$logsdir/${prefix}$NAME"
-		if $force-pull; then
+		if $forcepull; then
 			VV=$([ -z "$VERSION" ] && echo latest || echo $VERSION)
 			waiter docker pull $IMAGE:$VV
 		fi
@@ -337,7 +337,7 @@ function main {
 
 opts="${@:3:$(($#-1))}"
 echo "$opts"|grep -q "\-v\|\-\-verbose" || verbose=false
-echo "$opts"|grep -q "\-f\|\-\-force-pull" && force-pull=true || force-pull=false
+echo "$opts"|grep -q "\-f\|\-\-force-pull" && forcepull=true || forcepull=false
 echo "$opts"|grep -q "\-r\|\-\-rm" && remove=true || remove=false
 echo "$opts"|grep -q "\-c\|\-\-color" && color=true || color=false
 echo "$opts"|grep -q "\-f\|\-\-force" && force=true || force=false
