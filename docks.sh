@@ -42,7 +42,7 @@ function start {
 			bakimg="$IMAGE:$VERSION"
 			export HOST="$(echo "$prefix"| tr '.' '-')$NAME" NAME="${prefix}$NAME"
 			waiter ./start* "Starting $1 container (new)"
-			if [ $ret -ne 0 ]; then
+			if [ $ret -ne 0 ] && [ $ret -ne 125 ]; then
 				export bakori=$IMAGE
 				export IMAGE=$bakimg
 				waiter ./start* "Starting $1 container (new)"
@@ -285,6 +285,7 @@ function waiter {
 		trap - INT
 	else
 		$prog
+		ret=$?
 	fi
 }
 
