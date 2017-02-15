@@ -43,9 +43,9 @@ function start {
 		if ! $remove && [ ! -z "$CONTAINER" ]; then
 			waiter docker start $CONTAINER "Starting $1 container (old)"
 		else
-			bakimg="$IMAGE:$VERSION"
+			export bakimg="$IMAGE:$VERSION"
 			export HOST="$(echo "$prefix"| tr '.' '-')$NAME" NAME="${prefix}$NAME"
-			IMAGE=$backimg
+			export IMAGE=$bakimg
 			waiter ./start* "Starting $1 container (new)"
 			if [ $ret -ne 0 ] && [ $ret -ne 125 ]; then
 				export bakori=$IMAGE
