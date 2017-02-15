@@ -35,7 +35,7 @@ function start {
 		export $(cut -d= -f1 INFO | grep -v \#) IMAGE="$([ -z "$IMAGE" ] && (echo $NAME | tr _ /) || echo $IMAGE)" LOGDIR="$logsdir/${prefix}$NAME"
 		if $forcepull; then
 			VV=$([ -z "$VERSION" ] && echo latest || echo $VERSION)
-			waiter docker pull ${provider}${IMAGE}:${VV} "Pulling image ${provider}${IMAGE}:${VV}"
+			waiter docker pull ${provider}/${IMAGE}:${VV} "Pulling image ${provider}/${IMAGE}:${VV}"
 		fi
 		[ ! -d "$LOGDIR" ] && waiter mkdir -p $LOGDIR "creating logdir for $1"
 		[ ! -z "$PRE_CMD" ] && docker exec ${prefix}${NAME} bash -c "$PRE_CMD" &>/dev/null
