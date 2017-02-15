@@ -33,9 +33,9 @@ function start {
 		$remove && waiter docker rm ${prefix}$1 "Removing $1 container"
 		cd $servicesdir/${prefix}$1 && source INFO && \
 		export $(cut -d= -f1 INFO | grep -v \#) IMAGE="$([ -z "$IMAGE" ] && (echo $NAME | tr _ /) || echo $IMAGE)" LOGDIR="$logsdir/${prefix}$NAME"
+		VERSION=$([ -z "$VERSION" ] && echo latest || echo $VERSION)
 		if $forcepull; then
-			VV=$([ -z "$VERSION" ] && echo latest || echo $VERSION)
-			waiter docker pull ${provider}/${IMAGE}:${VV} "Pulling image ${provider}/${IMAGE}:${VV}"
+			waiter docker pull ${provider}/${IMAGE}:${VERSION} "Pulling image ${provider}/${IMAGE}:${VERSION}"
 		fi
 		[ ! -d "$LOGDIR" ] && waiter mkdir -p $LOGDIR "creating logdir for $1"
 		[ ! -z "$PRE_CMD" ] && docker exec ${prefix}${NAME} bash -c "$PRE_CMD" &>/dev/null
@@ -45,6 +45,7 @@ function start {
 		else
 			bakimg="$IMAGE:$VERSION"
 			export HOST="$(echo "$prefix"| tr '.' '-')$NAME" NAME="${prefix}$NAME"
+			IMAGE=$backimg
 			waiter ./start* "Starting $1 container (new)"
 			if [ $ret -ne 0 ] && [ $ret -ne 125 ]; then
 				export bakori=$IMAGE
