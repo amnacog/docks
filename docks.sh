@@ -56,7 +56,8 @@ function start {
 		fi
 		[ ! -z "$POST_CMD" ] && docker exec ${prefix}${NAME} bash -c "$POST_CMD" &>/dev/null
 		[ ! -z "$POST_OUT_CMD" ] && eval "$POST_OUT_CMD" &>/dev/null
-		cd - >/dev/null unset POST_CMD POST_OUT_CMD LOGDIR NAME IMAGE
+		cd - >/dev/null
+		unset POST_CMD POST_OUT_CMD LOGDIR NAME IMAGE
 	elif [ -d $servicesdir/${prefix}$1 ] && [ ! -f $servicesdir/${prefix}$1/start* ]; then
 		echo "Cannot start/stop an intermediate container."
 		exit 1
