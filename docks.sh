@@ -163,7 +163,7 @@ ff02::2		ip6-allrouters
 	done
 	for conts in $list; do
 		[ "$(echo "$conts" | cut -d' ' -f2)" == "${prefix}nginx" ] && extra=";pkill -HUP -f dnsmasq"
-		echo "$hosts" | sed "s/replace/$(echo "$conts" | cut -d' ' -f2 | rev | cut -d'.' -f1 | rev)/g" | docker exec -i $(echo "$conts" | cut -d' ' -f1) /bin/bash -c "cat > /etc/hosts$extra"
+		echo "$hosts" | sed "s/replace/$(echo "$conts" | cut -d' ' -f2 | rev | cut -d'.' -f1 | rev)/g" | docker exec --user root -i $(echo "$conts" | cut -d' ' -f1) /bin/bash -c "cat > /etc/hosts$extra"
 		unset extra
 	done
 
@@ -290,6 +290,7 @@ function waiter {
 		tput cnorm
 		trap - INT
 	else
+		echo "exec: $prog"
 		$prog
 		ret=$?
 	fi
