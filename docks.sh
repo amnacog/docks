@@ -317,11 +317,11 @@ Options:
 
 function main {
 	case "$1" in
-		reset)build $2;stop $2; unset remove;start $2;$0 update;;
+		reset)build $2;stop $2;save=$remove;remove=false;start $2;remove=$save;$0 update;;
 		start)start $2;$0 update;;
 		stop)stop $2;;
 		status)status $2;;
-		restart)stop $2;remove=false;start $2;$0 update;;
+		restart)stop $2;save=$remove;remove=false;start $2;remove=$save;$0 update;;
 		build)build $2;;
 		push)push $2;;
 		tag)tag $2 $3 $4;;
