@@ -247,11 +247,11 @@ function backup {
 
 function enter {
 	if [ -d $servicesdir/${prefix}$1 ] && [ ! -z "$(docker ps -a --filter "name=${prefix}$1$" --filter status=running -q)" ]; then
-		docker exec -it ${prefix}$1 bash
+		docker exec -it ${prefix}$1 /usr/bin/env sh -c "(bash || ash || sh) 2>/dev/null"
 	else
 		image="$(echo $1 | tr _ /)"
 		echo -e "\e[0;33mWarning\e[0m: this is a temporary container"
-		docker run -it --rm $provider/$image:latest bash
+		docker run -it --rm $provider/$image:latest /usr/bin/env sh -c "(bash || ash || sh) 2>/dev/null"
 	fi
 }
 
