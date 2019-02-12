@@ -38,7 +38,7 @@ function start {
 			waiter docker pull ${provider}/${IMAGE}:${VERSION} "Pulling image ${provider}/${IMAGE}:${VERSION}"
 		fi
 		[ ! -d "$LOGDIR" ] && waiter mkdir -p $LOGDIR "creating logdir for $1"
-		[ ! -z "$PRE_CMD" ] && docker exec ${prefix}${NAME} bash -c "$PRE_CMD" &>/dev/null
+		[ ! -z "$PRE_CMD" ] && docker exec ${prefix}${NAME} $PRE_CMD &>/dev/null
 		[ ! -z "$PRE_OUT_CMD" ] && eval "$PRE_OUT_CMD" &>/dev/null
 		if ! $remove && [ ! -z "$CONTAINER" ]; then
 			waiter docker start $CONTAINER "Starting $1 container (old)"
@@ -54,7 +54,7 @@ function start {
 				waiter docker tag ${provider}/$bakimg ${provider}/$bakori:latest "Tagged $IMAGE to latest"
 			fi
 		fi
-		[ ! -z "$POST_CMD" ] && docker exec ${prefix}${NAME} bash -c "$POST_CMD" &>/dev/null
+		[ ! -z "$POST_CMD" ] && docker exec ${prefix}${NAME} /usr/bin/env sh -c "$POST_CMD" &>/dev/null
 		[ ! -z "$POST_OUT_CMD" ] && eval "$POST_OUT_CMD" &>/dev/null
 		cd - >/dev/null
 		unset POST_CMD POST_OUT_CMD LOGDIR NAME IMAGE
@@ -163,7 +163,7 @@ ff02::2		ip6-allrouters
 	done
 	for conts in $list; do
 		[ "$(echo "$conts" | cut -d' ' -f2)" == "${prefix}nginx" ] && extra=";pkill -HUP -f dnsmasq"
-		echo "$hosts" | sed "s/replace/$(echo "$conts" | cut -d' ' -f2 | rev | cut -d'.' -f1 | rev)/g" | docker exec --user root -i $(echo "$conts" | cut -d' ' -f1) /bin/bash -c "cat > /etc/hosts$extra"
+		echo "$hosts" | sed "s/replace/$(echo "$conts" | cut -d' ' -f2 | rev | cut -d'.' -f1 | rev)/g" | docker exec --user root -i $(echo "$conts" | cut -d' ' -f1) /usr/bin/env sh -c "cat > /etc/hosts$extra"
 		unset extra
 	done
 
@@ -247,20 +247,21 @@ function backup {
 
 function enter {
 	if [ -d $servicesdir/${prefix}$1 ] && [ ! -z "$(docker ps -a --filter "name=${prefix}$1$" --filter status=running -q)" ]; then
-		docker exec -it ${prefix}$1 /usr/bin/env sh -c "(bash || ash || sh) 2>/dev/null"
+		docker exec -it ${prefix}$1 /usr/bin/env sh -c "bash || ash || sh"
 	else
 		image="$(echo $1 | tr _ /)"
 		echo -e "\e[0;33mWarning\e[0m: this is a temporary container"
-		docker run -it --rm $provider/$image:latest /usr/bin/env sh -c "(bash || ash || sh) 2>/dev/null"
+		docker run -it --rm $provider/$image:latest /usr/bin/env sh -c "bash || ash || sh"
 	fi
 }
 
 function log {
 	if [ -d $servicesdir/${prefix}$1 ]; then
 		[ -z "$(docker ps -a --filter "name=${prefix}$1$" --filter status=running -q)" ] && echo -e "\e[0;33mWarning\e[0m: Container is not running."
-		$color && { a="ccze";b="-m";c="ansi"; } || a="cat"
+		$color && { a="ccze";b="-m";c="ansi";d="-o";e="nolookups"; } || a="cat"
+		$forcepull && { t="--tail"; n=20; }
 		cd $servicesdir/${prefix}$1 && source INFO && export $(cut -d= -f1 INFO | grep -v \#) && cd - >/dev/null
-		docker logs -f ${prefix}$NAME | $a $b $c
+		docker logs ${prefix}$NAME -f $t $n | $a $b $c $d $e
 	fi
 }
 
@@ -345,6 +346,7 @@ echo "$opts"|grep -q "\-r\|\-\-rm" && remove=true || remove=false
 echo "$opts"|grep -q "\-c\|\-\-color" && color=true || color=false
 echo "$opts"|grep -q "\-f\|\-\-force" && force=true || force=false
 echo "$opts"|grep -q "\-a\|\-\-always" && always=true || always=false
+
 
 export ret;
 
