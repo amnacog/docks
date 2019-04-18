@@ -60,13 +60,10 @@ function start {
 		unset POST_CMD POST_OUT_CMD LOGDIR NAME IMAGE
 	elif [ -d $servicesdir/${prefix}$1 ] && [ ! -f $servicesdir/${prefix}$1/start* ]; then
 		echo "Cannot start/stop an intermediate container."
-		exit 1
 	elif [ ! -z "$CONTAINER" ]; then
 		echo "<start> $1 already running."
-		exit 1
 	else
 		echo "<start> $1 not found."
-		exit -1
 	fi
 }
 
@@ -272,9 +269,15 @@ function updateme {
 function waiter {
 	len=$(($#-1))
 	prog=${@:1:$len}
+	pid=""
+	cleanup() {
+		tput cnorm
+		kill -13 $pid &>/dev/null
+		exit 1
+	}
 	if ! $verbose; then
 		tput civis
-		trap "tput cnorm;exit" INT
+		trap cleanup INT
 		anim=( '/' '――' '\' '|' )
 		i=0
 		echo -ne "\r${@: -1}  "
