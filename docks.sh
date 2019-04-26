@@ -4,6 +4,7 @@ cd $(dirname $0)
 script=$(basename $(echo $0))
 origin=$PWD
 shell=$(basename $(echo $SHELL))
+
 [ "$HOME" == "/" ] && export HOME="/root"
 
 ([ ! -f $origin/.docks-config ] && [ ! -w $origin ]) && conf_dir="$HOME" || conf_dir="$origin"
@@ -271,12 +272,12 @@ function waiter {
 	prog=${@:1:$len}
 	pid=""
 	cleanup() {
-		tput cnorm
+		tput cnorm &>/dev/null
 		kill -13 $pid &>/dev/null
 		exit 1
 	}
 	if ! $verbose; then
-		tput civis
+		tput civis &>/dev/null
 		trap cleanup INT
 		anim=( '/' '――' '\' '|' )
 		i=0
@@ -291,7 +292,7 @@ function waiter {
 		ret=$?
 		kill -13 $pid
 		[ $ret -ne 0 ] && echo -e "\r${@: -1} \e[0;31mfailed\n$log\e[0m" || echo -e "\r${@: -1} \e[0;32mfinished\e[0m"
-		tput cnorm
+		tput cnorm &>/dev/null
 		trap - INT
 	else
 		echo "exec: $prog"
