@@ -153,11 +153,17 @@ ff02::2		ip6-allrouters
 "
 	IFS="
 "
+
 	list="$(docker ps --format "{{.ID}} {{.Names}} {{.Image}}")"
 
 	for conts in $list; do
 		ip="$(docker inspect $(echo $conts | cut -d' ' -f1) | jq -r '.[0].NetworkSettings.IPAddress')"
-		[ -z "$ip" ] || hosts="$(echo -e "$hosts\n$ip\t$(echo $conts | cut -d' ' -f2)")"
+
+		alias_file=$(cat $(echo $conts | cut -d' ' -f2)/INFO | grep HOST_ALIAS)
+		[ ! -z "$alias_file" ] && HOST_ALIAS=" "$(echo $alias_file | cut -d'"' -f2)
+
+		[ -z "$ip" ] || hosts="$(echo -e "$hosts\n$ip\t$(echo $conts | cut -d' ' -f2)$HOST_ALIAS")"
+		unset HOST_ALIAS
 	done
 	for conts in $list; do
 		[ "$(echo "$conts" | cut -d' ' -f2)" == "${prefix}nginx" ] && extra=";pkill -HUP -f dnsmasq"
@@ -343,20 +349,19 @@ function main {
 #start
 [ -z "$1" ] && help && exit
 
-opts="${@:3:$(($#-1))}"
-echo "$opts"|grep -q "\-v\|\-\-verbose" || verbose=false
-echo "$opts"|grep -q "\-f\|\-\-force-pull" && forcepull=true || forcepull=false
-echo "$opts"|grep -q "\-r\|\-\-rm" && remove=true || remove=false
-echo "$opts"|grep -q "\-c\|\-\-color" && color=true || color=false
-echo "$opts"|grep -q "\-f\|\-\-force" && force=true || force=false
-echo "$opts"|grep -q "\-a\|\-\-always" && always=true || always=false
+[[ $@ == *'-v'* || $@ == *'--verbose'* ]] && verbose=true || verbose=false
+[[ $@ == *'-f'* || $@ == *'--force-pull'* ]] && { forcepull=true;force=true; } || { forcepull=false;force=false; }
+[[ $@ == *'-r'* || $@ == *'--rm'* ]] && remove=true || remove=false
+[[ $@ == *'-v'* || $@ == *'--color'* ]] && color=true || color=false
+[[ $@ == *'-a'* || $@ == *'--always'* ]] && always=true || always=false
 
 
 export ret;
 
 if [ ! -z "$2" ]; then
 	for arg in ${@:2:$(($#-1))}; do
-		echo $arg | grep -qv "\-" && main $1 $arg || true
+		main $1 $arg
+		#echo $arg | grep -qv "\-" && main $1 $arg || true
 	done
 else
 	main $1 $2
