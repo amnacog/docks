@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 cd $(dirname $0)
+
 script=$(basename $(echo $0))
 origin=$PWD
 shell=$(basename $(echo $SHELL))
@@ -62,8 +63,8 @@ function start {
 					waiter docker tag ${provider}/$bakimg ${provider}/$bakori:latest "Tagged $IMAGE to latest"
 				fi
 			fi
-			[ ! -z "$POST_CMD" ] && docker exec ${NAME} /usr/bin/env sh -c "$POST_CMD" &>/dev/null
-			[ ! -z "$POST_OUT_CMD" ] && eval "$POST_OUT_CMD" &>/dev/null
+			[ ! -z "$POST_CMD" ] && waiter docker exec ${NAME} /usr/bin/env sh -c "$POST_CMD" "Execing internal post scripts"
+			[ ! -z "$POST_OUT_CMD" ] && waiter eval "$POST_OUT_CMD" "Execing external post scripts"
 		elif [ -f $containerdir/docker-compose.yml ]; then
 			$remove && waiter docker-compose rm -f -v "Removing $1 containers pool"
 			waiter ./start* "Starting $1 containers (new)"
@@ -176,7 +177,7 @@ function update {
 		alias_file=$(cat $(echo $name | cut -d' ' -f2)/INFO | grep HOST_ALIAS)
 		[ ! -z "$alias_file" ] && HOST_ALIAS=" "$(echo $alias_file | cut -d'"' -f2)
 		hosts_aliases=${name}${HOST_ALIAS}
-		[ -z "$v4" ] || hosts=$(echo -e "$hosts\n$v4\t\t\t\t$hosts_aliases\n$v6\t$hosts_aliases")
+		[ -z "$v4" ] || hosts=$(echo -e "$hosts\n$v4\t\t\t\t$hosts_aliases\n${v6:-"#"}\t$hosts_aliases")
 		unset HOST_ALIAS
 		((count++))
 	done <<< "$list"
@@ -184,7 +185,6 @@ function update {
 	echo "${hosts}" > ${servicesdir}/docker.hosts
 	echo wrote config
 	systemctl reload dnsmasq
-	systemctl restart sslh
 }
 
 function mbackup {
@@ -255,7 +255,7 @@ function backup {
 
 function enter {
 	if [ -d $servicesdir/${prefix}$1 ] && [ ! -z "$(docker ps -a --filter "name=${prefix}$1$" --filter status=running -q)" ]; then
-		docker exec -it ${prefix}$1 /usr/bin/env sh -c "set -e;bash||ash||sh"
+		docker exec -it ${prefix}$1 /usr/bin/env sh -c "set -e;[ -f /bin/bash ] && /bin/bash || [ -f /bin/ash ] && /bin/ash || /bin/sh"
 	else
 		image="$(echo $1 | tr _ /)"
 		echo -e "\e[0;33mWarning\e[0m: this is a temporary container"
@@ -289,12 +289,12 @@ function waiter {
 	if ! $verbose; then
 		tput civis &>/dev/null
 		trap cleanup INT
-		anim=( '/' '――' '\' '|' )
+		anim=('⠙' '⠋' '⠇' '⡆' '⣄' '⣠' '⢰' '⠸')
 		i=0
 		echo -ne "\r${@: -1}  "
 		while :; do
 			echo -ne "\r${@: -1} ${anim[$i]} "
-			[ $((++i)) -gt 3 ] && i=0
+			[ $((++i)) -gt 7 ] && i=0
 			sleep 0.1
 		done &
 		pid=$!
