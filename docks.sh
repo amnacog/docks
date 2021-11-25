@@ -177,7 +177,9 @@ function update {
 		alias_file=$(cat $(echo $name | cut -d' ' -f2)/INFO | grep HOST_ALIAS)
 		[ ! -z "$alias_file" ] && HOST_ALIAS=" "$(echo $alias_file | cut -d'"' -f2)
 		hosts_aliases=${name}${HOST_ALIAS}
-		[ -z "$v4" ] || hosts=$(echo -e "$hosts\n$v4\t\t\t\t$hosts_aliases\n${v6:-"#"}\t$hosts_aliases")
+		v4len="$(echo -n $v4 | wc -c)"
+		v6len="$(echo -n $v6 | wc -c)"
+		[ -z "$v4" ] || hosts=$(echo -e "$hosts\n$v4$(printf %$((30 - $v4len))s)$hosts_aliases\n${v6:-"#"}$(printf %$((30 - $v6len))s)$hosts_aliases")
 		unset HOST_ALIAS
 		((count++))
 	done <<< "$list"
@@ -289,7 +291,7 @@ function waiter {
 	if ! $verbose; then
 		tput civis &>/dev/null
 		trap cleanup INT
-		anim=('⠙' '⠋' '⠇' '⡆' '⣄' '⣠' '⢰' '⠸')
+		anim=( '⠋' '⠙' '⠸' '⢰' '⣠' '⣄' '⡆' '⠇')
 		i=0
 		echo -ne "\r${@: -1}  "
 		while :; do
