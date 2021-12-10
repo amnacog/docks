@@ -123,7 +123,7 @@ function build {
 		else
 			build_dir=$builddir/${prefix}$1
 		fi
-		[ ! -d "$build_dir" -a ! -z "$CREATE_DATADIR"] && waiter mkdir -p $build_dir "Creating datadir for $1"
+		[ ! -d "$build_dir" -a ! -z "$CREATE_DATADIR" ] && waiter mkdir -p $build_dir "Creating datadir for $1"
 
 		waiter docker build --network=host -t $provider/$NAME:$VERSION $($remove && echo "--no-cache") -f $containerdir/Dockerfile --rm $(echo $OPTS) $build_dir "Building $1 image"
 		[ ! -z "$VERSION" ] && waiter docker tag $provider/$NAME:$VERSION $provider/$NAME:latest "Configuring $1 image"
