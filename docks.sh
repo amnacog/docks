@@ -18,14 +18,15 @@ provider=\"docks\"
 backbucket=\"\"
 backupdir=\"/sample/backups\"
 servicesdir=\"/sample/services\"
-builddir=\"/sample/build\"
+builddir=\"/sample/buildctx\"
+datadir=\"/sample/data\"
 logsdir=\"/sample/log\"
 maxsaves=\"10\"
 " > $conf_dir/.docks-config
 	exit
 }
 
-services="$(echo ${servicesdir}/*/ | tr ' ' '\n' | rev | cut -d/ -f2 | cut -d. -f1 | rev | tr '\n' ' ')"
+services="$(echo ${servicesdir}/*/ | tr ' ' '\n' | grep $prefix | rev | cut -d/ -f2 | cut -d. -f1 | rev | tr '\n' ' ')"
 
 function start {
 	containerdir=$servicesdir/${prefix}$1
@@ -35,10 +36,11 @@ function start {
 		cd $containerdir
 		source INFO
 		export $(cut -d= -f1 INFO | grep -v \#)
-		if [ -f $containerdir/Dockerfile ] && [ -z "$(docker ps -a --filter "name=${prefix}$1$" --filter status=running -q)" ]; then
+		if [ -f $containerdir/Dockerfile -a -z "$(docker ps -a --filter "name=${prefix}$1$" --filter status=running -q)" ]; then
 			$remove && waiter docker rm ${prefix}$1 "Removing $1 container"
-			export IMAGE="$([ -z "$IMAGE" ] && (echo $NAME | tr _ /) || echo $IMAGE)"
+			export IMAGE="$([ -z "$IMAGE" ] && echo ${provider}/$(echo $NAME | tr _ /) || echo $IMAGE)"
 			export LOGDIR="$logsdir/${prefix}$NAME"
+			export DATADIR="$datadir/${prefix}$NAME"
 			export VERSION=$([ -z "$VERSION" ] && echo latest || echo $VERSION)
 			export HOST="$(echo "$prefix"| tr '.' '-')$NAME"
 			export NAME="${prefix}$NAME"
@@ -47,16 +49,17 @@ function start {
 			if $forcepull; then
 				waiter docker pull ${provider}/${IMAGE}:${VERSION} "Pulling image ${provider}/${IMAGE}:${VERSION}"
 			fi
-			[ ! -d "$LOGDIR" ] && waiter mkdir -p $LOGDIR "creating logdir for $1"
-			[ ! -z "$PRE_CMD" ] && waiter docker exec ${NAME} $PRE_CMD "executing pre in task"
-			[ ! -z "$PRE_OUT_CMD" ] && waiter eval "$PRE_OUT_CMD" "executing pre out task"
+			[ ! -d "$LOGDIR" ] && waiter mkdir -p $LOGDIR "Creating logdir for $1"
+			[ ! -d "$DATADIR" -a ! -z "$CREATE_DATADIR" ] && waiter mkdir -p $DATADIR "Creating datadir for $1"
+			[ ! -z "$PRE_CMD" ] && waiter docker exec ${NAME} $PRE_CMD "Executing pre in task"
+			[ ! -z "$PRE_OUT_CMD" ] && waiter eval "$PRE_OUT_CMD" "Executing pre out task"
 			if ! $remove && [ ! -z "$CONTAINER" ]; then
 				waiter docker start $CONTAINER "Starting $1 container (old)"
 			else
 				export bakimg="$IMAGE:$VERSION"
 				export IMAGE=$bakimg
 				waiter ./start* "Starting $1 container (new)"
-				if [ $ret -ne 0 ] && [ $ret -ne 125 ]; then
+				if [ $ret -ne 0 -a $ret -ne 125 ]; then
 					export bakori=$IMAGE
 					export IMAGE=$bakimg
 					waiter ./start* "Starting $1 container (new)"
@@ -90,7 +93,7 @@ function stop {
 				waiter docker stop -t 4 ${prefix}$NAME "Stopping $1 container"
 				$remove && waiter docker rm -f ${prefix}$NAME "Removing $1 container"
 			elif [ ! -z "$(docker ps -a --filter "name=${prefix}$NAME" -aq)" ] && $remove; then
-				$remove && waiter docker rm -f ${prefix}$NAME "removing $1 container (dead)"
+				$remove && waiter docker rm -f ${prefix}$NAME "Removing $1 container (dead)"
 			else
 				echo "<stop> $1 not running."
 			fi
@@ -106,17 +109,26 @@ function stop {
 
 function build {
 	[ -z "$1" ] && help && exit -1
-	if [ -d $builddir/${prefix}$1 ] && [ -f $builddir/${prefix}$1/Dockerfile ]; then
-		cd $builddir/${prefix}$1 && source INFO && export $(cut -d= -f1 INFO | grep -v \#) NAME="$(echo $NAME | tr _ /)"
-		image=$(cat Dockerfile | grep FROM | grep -v $prefix | cut -d' ' -f2)
+	containerdir=$servicesdir/${prefix}$1
+	if [ -d $containerdir -a -f $containerdir/Dockerfile ]; then
+		cd $containerdir && source INFO && export $(cut -d= -f1 INFO | grep -v \#) NAME="$(echo $NAME | tr _ /)"
+		base_image=$(cat Dockerfile | grep FROM | grep -v $prefix | cut -d' ' -f2)
 
-		if $remove && [ ! -z "$image" ]; then
-			waiter docker pull $image "Pulling $1 base image"
+		if $remove && [ ! -z "$base_image" ]; then
+			waiter docker pull $base_image "Pulling $1 base image"
 		fi
-		waiter docker build --network=host -t $provider/$NAME:$VERSION $($remove && echo "--no-cache") --rm $(echo $OPTS) $builddir/${prefix}$1 "Building $1 image"
+
+		if echo "$builddir" | grep -q '%service%'; then
+			build_dir=${builddir/'%service%'/${prefix}$1}
+		else
+			build_dir=$builddir/${prefix}$1
+		fi
+		[ ! -d "$build_dir" -a ! -z "$CREATE_DATADIR"] && waiter mkdir -p $build_dir "Creating datadir for $1"
+
+		waiter docker build --network=host -t $provider/$NAME:$VERSION $($remove && echo "--no-cache") -f $containerdir/Dockerfile --rm $(echo $OPTS) $build_dir "Building $1 image"
 		[ ! -z "$VERSION" ] && waiter docker tag $provider/$NAME:$VERSION $provider/$NAME:latest "Configuring $1 image"
 		cd - >/dev/null && unset NAME VERSION OPTS
-	elif [ -d $builddir/${prefix}$1 ] && [ ! -f $builddir/${prefix}$1/Dockerfile ]; then
+	elif [ -d $containerdir -a ! -f $containerdir/Dockerfile ]; then
 		echo "$1 meant to be use by another image."
 	else
 		echo "$1 not found."
@@ -125,8 +137,9 @@ function build {
 
 function push {
 	[ -z "$1" ] && help && exit -1
-	if [ -d $builddir/${prefix}$1 ] && [ -f $builddir/${prefix}$1/INFO ]; then
-		cd $builddir/${prefix}$1 && source INFO && export $(cut -d= -f1 INFO | grep -v \#) NAME="$(echo $NAME | tr _ /)"
+	containerdir=$servicesdir/${prefix}$1
+	if [ -d $containerdir -a -f $containerdir/INFO ]; then
+		cd $containerdir && source INFO && export $(cut -d= -f1 INFO | grep -v \#) NAME="$(echo $NAME | tr _ /)"
 		if ! [ -z "$(docker images -q ${provider}/${NAME}:${VERSION})" ]; then
 			waiter docker push ${provider}/${NAME}:${VERSION} "Pushing ${NAME}:${VERSION}"
 			if $always; then
@@ -256,12 +269,14 @@ function backup {
 }
 
 function enter {
-	if [ -d $servicesdir/${prefix}$1 ] && [ ! -z "$(docker ps -a --filter "name=${prefix}$1$" --filter status=running -q)" ]; then
-		docker exec -it ${prefix}$1 /usr/bin/env sh -c "set -e;[ -f /bin/bash ] && /bin/bash || [ -f /bin/ash ] && /bin/ash || /bin/sh"
+	findshell='for shl in "zsh" "bash" "ash" "sh";do r=$(which $shl);if [ ! -z "$r" ]; then $r; break; fi; done'
+
+	if [ -d $servicesdir/${prefix}$1 -a ! -z "$(docker ps -a --filter "name=${prefix}$1$" --filter status=running -q)" ]; then
+		docker exec -it ${prefix}$1 /usr/bin/env sh -c "$findshell"
 	else
 		image="$(echo $1 | tr _ /)"
 		echo -e "\e[0;33mWarning\e[0m: this is a temporary container"
-		docker run -it --rm $provider/$image:latest /usr/bin/env sh -c "bash || ash || sh"
+		docker run -it --rm $provider/$image:latest /usr/bin/env sh -c "$findshell"
 	fi
 }
 
