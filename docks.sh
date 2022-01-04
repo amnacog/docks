@@ -31,11 +31,15 @@ services="$(echo ${servicesdir}/*/ | tr ' ' '\n' | grep $prefix | rev | cut -d/ 
 function start {
 	containerdir=$servicesdir/${prefix}$1
 	[ -z "$1" ] && help && exit -1
+	prefixlog=''
+	[ ! -z "$2" ] && prefixlog="[$2] "
 
 	if [ -d $containerdir ]; then
 		cd $containerdir
+		unset PRE_CMD PRE_OUT_CMD POST_CMD POST_OUT_CMD LOGDIR DATADIR CREATE_DATADIR NAME IMAGE VERSION CONTAINER HOST DEPENDS
 		source INFO
 		export $(cut -d= -f1 INFO | grep -v \#)
+
 		if [ -f $containerdir/Dockerfile -a -z "$(docker ps -a --filter "name=${prefix}$1$" --filter status=running -q)" ]; then
 			$remove && waiter docker rm ${prefix}$1 "Removing $1 container"
 			export IMAGE="$([ -z "$IMAGE" ] && echo ${provider}/$(echo $NAME | tr _ /) || echo $IMAGE)"
@@ -45,38 +49,48 @@ function start {
 			export HOST="$(echo "$prefix"| tr '.' '-')$NAME"
 			export NAME="${prefix}$NAME"
 
+
 			CONTAINER="$(docker ps -a --filter "name=${prefix}$1$" -q)"
 			if $forcepull; then
-				waiter docker pull ${provider}/${IMAGE}:${VERSION} "Pulling image ${provider}/${IMAGE}:${VERSION}"
+				waiter docker pull ${provider}/${IMAGE}:${VERSION} "${prefixlog}Pulling image ${provider}/${IMAGE}:${VERSION}"
 			fi
-			[ ! -d "$LOGDIR" ] && waiter mkdir -p $LOGDIR "Creating logdir for $1"
-			[ ! -d "$DATADIR" -a ! -z "$CREATE_DATADIR" ] && waiter mkdir -p $DATADIR "Creating datadir for $1"
-			[ ! -z "$PRE_CMD" ] && waiter docker exec ${NAME} $PRE_CMD "Executing pre in task"
-			[ ! -z "$PRE_OUT_CMD" ] && waiter eval "$PRE_OUT_CMD" "Executing pre out task"
+			[ ! -d "$LOGDIR" ] && waiter mkdir -p $LOGDIR "${prefixlog}Creating logdir for $1"
+			[ ! -d "$DATADIR" -a ! -z "$CREATE_DATADIR" ] && waiter mkdir -p $DATADIR "${prefixlog}Creating datadir for $1"
+			[ ! -z "$PRE_CMD" ] && waiter docker exec ${NAME} $PRE_CMD "${prefixlog}Executing pre in task"
+			[ ! -z "$PRE_OUT_CMD" ] && waiter eval "$PRE_OUT_CMD" "${prefixlog}Executing pre out task"
+
+			if $dependency && [ "$2" != "dep" ]; then
+				for service in $DEPENDS; do
+					if ! status $service | grep -q OK; then
+						( start $service dep )
+					fi
+				done
+			fi
+
 			if ! $remove && [ ! -z "$CONTAINER" ]; then
-				waiter docker start $CONTAINER "Starting $1 container (old)"
+				waiter docker start $CONTAINER "${prefixlog}Starting $1 container (old)"
 			else
 				export bakimg="$IMAGE:$VERSION"
 				export IMAGE=$bakimg
-				waiter ./start* "Starting $1 container (new)"
+				waiter ./start* "${prefixlog}Starting $1 container (new)"
 				if [ $ret -ne 0 -a $ret -ne 125 ]; then
 					export bakori=$IMAGE
 					export IMAGE=$bakimg
-					waiter ./start* "Starting $1 container (new)"
-					waiter docker tag ${provider}/$bakimg ${provider}/$bakori:latest "Tagged $IMAGE to latest"
+					waiter ./start* "${prefixlog}Starting $1 container (new)"
+					waiter docker tag ${provider}/$bakimg ${provider}/$bakori:latest "${prefixlog}Tagged $IMAGE to latest"
 				fi
 			fi
-			[ ! -z "$POST_CMD" ] && waiter docker exec ${NAME} /usr/bin/env sh -c "$POST_CMD" "Execing internal post scripts"
-			[ ! -z "$POST_OUT_CMD" ] && waiter eval "$POST_OUT_CMD" "Execing external post scripts"
+			[ ! -z "$POST_CMD" ] && waiter docker exec ${NAME} /usr/bin/env sh -c "$POST_CMD" "${prefixlog}Execing internal post scripts"
+			[ ! -z "$POST_OUT_CMD" ] && waiter eval "$POST_OUT_CMD" "${prefixlog}Execing external post scripts"
 		elif [ -f $containerdir/docker-compose.yml ]; then
-			$remove && waiter docker-compose rm -f -v "Removing $1 containers pool"
-			waiter ./start* "Starting $1 containers (new)"
+			$remove && waiter docker-compose rm -f -v "${prefixlog}Removing $1 containers pool"
+			waiter ./start* "${prefixlog}Starting $1 containers (new)"
 		elif [ ! -f $containerdir/start* ]; then
 			echo "Cannot start/stop an intermediate container."
 		elif [ ! -z "$CONTAINER" ]; then
 			echo "<start> $1 already running."
 		fi
-		unset POST_CMD POST_OUT_CMD LOGDIR NAME IMAGE VERSION CONTAINER HOST
+		unset PRE_CMD PRE_OUT_CMD POST_CMD POST_OUT_CMD LOGDIR DATADIR CREATE_DATADIR NAME IMAGE VERSION CONTAINER HOST DEPENDS
 		cd - >/dev/null
 	else
 		echo "<start> $1 not found."
@@ -147,7 +161,7 @@ function push {
 			fi
 		else
 			echo "$1 not builded yet."
-			if $force; then
+			if $forcepull; then
 				build $1
 			fi
 		fi
@@ -199,7 +213,6 @@ function update {
 
 	echo "${hosts}" > ${servicesdir}/docker.hosts
 	echo wrote config
-	systemctl reload dnsmasq
 }
 
 function mbackup {
@@ -371,9 +384,10 @@ function main {
 [ -z "$1" ] && help && exit
 
 [[ $@ == *'-v'* || $@ == *'--verbose'* ]] && verbose=true || verbose=false
-[[ $@ == *'-f'* || $@ == *'--force-pull'* ]] && { forcepull=true;force=true; } || { forcepull=false;force=false; }
+[[ $@ == *'-f'* || $@ == *'--force-pull'* ]] && forcepull=true || forcepull=false
 [[ $@ == *'-r'* || $@ == *'--rm'* ]] && remove=true || remove=false
-[[ $@ == *'-v'* || $@ == *'--color'* ]] && color=true || color=false
+[[ $@ == *'-d'* || $@ == *'--dependency'* ]] && dependency=true || dependency=false
+[[ $@ == *'-c'* || $@ == *'--color'* ]] && color=true || color=false
 [[ $@ == *'-a'* || $@ == *'--always'* ]] && always=true || always=false
 
 
