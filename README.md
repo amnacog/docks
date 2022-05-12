@@ -11,21 +11,25 @@ A script to simplify the way to interact with dockers container
 
 ```
 $~> docks
-usage: services start|stop|restart|status|build|update <services> <opts>
+usage: services start|stop|restart|status|build|update|list|log|self-update <services> <opts>
 services: manage the containers
 
 Options:
 
 start|stop|restart <services> : Manipulations around services
-	[--rm|-r]	: Erase the previously running container if so
+	[--rm|-r]	: Erase the previously running container if so / rebuild the image
 	[--verbose|-v]	: Display the verbose output (behind the scenes)
+	[--force-pull|-f]	: Always pull the image tag before commands
+	[--dependency|-d]	: Check/Start dependents containers before
 build <services>	: Build the service with docker of choosen service
+push <services>	: Push the service of choosen service
 reset <services>	: Stop the container, rebuild and start it
-status <services>	: Show the running services
-enter  <services>	: Enter interactivly inside containers
+status <services>	: Sh ow the running services
+enter  <services>	: Enter interactivly inside container
 update 			: Update the containers resolve ip's
 list [-c]		: List the availables services
-log [--color|-c]	: Logging containers
+log [--color|-c]	: Logging containers (need ccze)
+self-update		: Check/Install latest version of Docks
 
 offered apps: *your apps goes here*
 ```
