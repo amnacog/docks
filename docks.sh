@@ -41,7 +41,8 @@ function start {
 		export $(cut -d= -f1 INFO | grep -v \#)
 
 		if [ -f $containerdir/Dockerfile -a -z "$(docker ps -a --filter "name=${prefix}$1$" --filter status=running -q)" ]; then
-			$remove && waiter docker rm ${prefix}$1 "Removing $1 container"
+			CONTAINER="$(docker ps -a --filter "name=${prefix}$1$" -q)"
+
 			export IMAGE="$([ -z "$IMAGE" ] && echo ${provider}/$(echo $NAME | tr _ /) || echo $IMAGE)"
 			export LOGDIR="$logsdir/${prefix}$NAME"
 			export DATADIR="$datadir/${prefix}$NAME"
@@ -49,17 +50,17 @@ function start {
 			export HOST="$(echo "$prefix"| tr '.' '-')$NAME"
 			export NAME="${prefix}$NAME"
 
+			$remove && [ ! -z "$CONTAINER" ] && waiter docker rm ${prefix}$1 "Removing $1 container"
 
-			CONTAINER="$(docker ps -a --filter "name=${prefix}$1$" -q)"
 			if $forcepull; then
 				waiter docker pull ${provider}/${IMAGE}:${VERSION} "${prefixlog}Pulling image ${provider}/${IMAGE}:${VERSION}"
 			fi
 			[ ! -d "$LOGDIR" ] && waiter mkdir -p $LOGDIR "${prefixlog}Creating logdir for $1"
-			[ ! -d "$DATADIR" -a ! -z "$CREATE_DATADIR" ] && waiter mkdir -p $DATADIR "${prefixlog}Creating datadir for $1"
+			[ ! -d "$DATADIR" -a ! "$CREATE_DATADIR" != "false" ] && waiter mkdir -p $DATADIR "${prefixlog}Creating datadir for $1"
 			[ ! -z "$PRE_CMD" ] && waiter docker exec ${NAME} $PRE_CMD "${prefixlog}Executing pre in task"
 			[ ! -z "$PRE_OUT_CMD" ] && waiter eval "$PRE_OUT_CMD" "${prefixlog}Executing pre out task"
 
-			if $dependency && [ "$2" != "dep" ]; then
+			if $dependency || [ "$2" != "dep" ]; then
 				for service in $DEPENDS; do
 					if ! status $service | grep -q OK; then
 						( start $service dep )
@@ -342,21 +343,24 @@ function waiter {
 }
 
 function help {
-	echo -e "usage: $script start|stop|restart|status|build|update <services> <opts> \n$script: manage the containers
+	echo -e "usage: $script start|stop|restart|status|build|update|list|log|self-update <services> <opts> \n$script: manage the containers
 
 Options:
 
 \e[0;33mstart|stop|restart \e[3;34m<services> \e[0m: Manipulations around services
 \t\e[2;35m[--rm|-r]\t\e[0m: Erase the previously running container if so / rebuild the image
 \t\e[2;35m[--verbose|-v]\t\e[0m: Display the verbose output (behind the scenes)
+\t\e[2;35m[--force-pull|-f]\t\e[0m: Always pull the image tag before commands
+\t\e[2;35m[--dependency|-d]\t\e[0m: Check/Start dependents containers before
 \e[0;33mbuild \e[3;34m<services>\e[0m\t: Build the service with docker of choosen service
 \e[0;33mpush \e[3;34m<services>\e[0m\t: Push the service of choosen service
 \e[0;33mreset \e[3;34m<services>\e[0m\t: Stop the container, rebuild and start it
 \e[0;33mstatus \e[3;34m<services>\e[0m\t: Sh ow the running services
-\e[0;33menter  \e[3;34m<services>\e[0m\t: Enter interactivly inside containers
+\e[0;33menter  \e[3;34m<services>\e[0m\t: Enter interactivly inside container
 \e[0;33mupdate \e[0m\t\t\t: Update the containers resolve ip's
 \e[0;33mlist \e[2;35m[-c]\e[0m\t\t: List the availables services
-\e[0;33mlog \e[2;35m[--color|-c]\e[0m\t: Logging containers
+\e[0;33mlog \e[2;35m[--color|-c]\e[0m\t: Logging containers (need ccze)
+\e[0;33mself-update\e[0m\t\t: Check/Install latest version of Docks
 \noffered apps: $services"
 }
 
@@ -366,7 +370,7 @@ function main {
 		start)start $2;$0 update;;
 		stop)stop $2;;
 		status)status $2;;
-		restart)stop $2;save=$remove;remove=false;start $2;remove=$save;$0 update;;
+		restart)stop $2;start $2;$0 update;;
 		build)build $2;;
 		push)push $2;;
 		tag)tag $2 $3 $4;;
@@ -383,13 +387,12 @@ function main {
 #start
 [ -z "$1" ] && help && exit
 
-[[ $@ == *'-v'* || $@ == *'--verbose'* ]] && verbose=true || verbose=false
-[[ $@ == *'-f'* || $@ == *'--force-pull'* ]] && forcepull=true || forcepull=false
-[[ $@ == *'-r'* || $@ == *'--rm'* ]] && remove=true || remove=false
-[[ $@ == *'-d'* || $@ == *'--dependency'* ]] && dependency=true || dependency=false
-[[ $@ == *'-c'* || $@ == *'--color'* ]] && color=true || color=false
-[[ $@ == *'-a'* || $@ == *'--always'* ]] && always=true || always=false
-
+[[ $@ == *'-v'* || $@ == *'--verbose'* ]] && export verbose=true || export verbose=false
+[[ $@ == *'-f'* || $@ == *'--force-pull'* ]] && export forcepull=true || export forcepull=false
+[[ $@ == *'-r'* || $@ == *'--rm'* ]] && export remove=true || export remove=false
+[[ $@ == *'-d'* || $@ == *'--dependency'* ]] && export dependency=true || export dependency=false
+[[ $@ == *'-c'* || $@ == *'--color'* ]] && export color=true || export color=false
+[[ $@ == *'-a'* || $@ == *'--always'* ]] && export always=true || export always=false
 
 export ret;
 
