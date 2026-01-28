@@ -31,7 +31,7 @@ list [-c]		: List the availables services
 log [--color|-c]	: Logging containers (need ccze)
 self-update		: Check/Install latest version of Docks
 
-offered apps: *your apps goes here*
+offered apps: *registered containers listed there*
 ```
 
 # Installation
@@ -92,6 +92,7 @@ containers folder
 	NAME="sample_container" # container to run
 	IMAGE="nginx"           # image name to build
 	VERSION="0.1"           # image tag to build
+	DEPENDS="some_child"
 	
 	#backups
 	VOLUME_DIR="app"        # folder to backup 

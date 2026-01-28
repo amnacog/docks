@@ -5,6 +5,7 @@ cd $(dirname $0)
 script=$(basename $(echo $0))
 origin=$PWD
 shell=$(basename $(echo $SHELL))
+arch=$(dpkg --print-architecture)
 
 [ "$HOME" == "/" ] && export HOME="/root"
 
@@ -22,11 +23,21 @@ builddir=\"/sample/buildctx\"
 datadir=\"/sample/data\"
 logsdir=\"/sample/log\"
 maxsaves=\"10\"
+dependency=\"true\"
 " > $conf_dir/.docks-config
 	exit
 }
 
 services="$(echo ${servicesdir}/*/ | tr ' ' '\n' | grep $prefix | rev | cut -d/ -f2 | cut -d. -f1 | rev | tr '\n' ' ')"
+
+function check {
+	out=$(docker info 2>&1 >/dev/null)
+	ret=$?
+	if [ $ret -ne 0 -o ! -z "$out" ]; then
+		echo -e "\e[0;31mDocker error: $out\e[0m"
+		exit 1
+	fi
+}
 
 function start {
 	containerdir=$servicesdir/${prefix}$1
@@ -57,13 +68,15 @@ function start {
 			fi
 			[ ! -d "$LOGDIR" ] && waiter mkdir -p $LOGDIR "${prefixlog}Creating logdir for $1"
 			[ ! -d "$DATADIR" -a ! "$CREATE_DATADIR" != "false" ] && waiter mkdir -p $DATADIR "${prefixlog}Creating datadir for $1"
-			[ ! -z "$PRE_CMD" ] && waiter docker exec ${NAME} $PRE_CMD "${prefixlog}Executing pre in task"
 			[ ! -z "$PRE_OUT_CMD" ] && waiter eval "$PRE_OUT_CMD" "${prefixlog}Executing pre out task"
+			[ ! -z "$PRE_CMD" ] && waiter docker exec ${NAME} $PRE_CMD "${prefixlog}Executing pre in task"
 
 			if $dependency || [ "$2" != "dep" ]; then
 				for service in $DEPENDS; do
-					if ! status $service | grep -q OK; then
-						( start $service dep )
+					if ! status $service | grep -q OK && [ "$3" != "$1" ]; then
+						( start $service dep $1 )
+					elif [ "$3" == "$1" ]; then
+						echo dependency $1 has self dependence with $3
 					fi
 				done
 			fi
@@ -102,9 +115,12 @@ function stop {
 	containerdir=${servicesdir}/${prefix}$1
 	[ -z "$1" ] && help && exit -1
 	if [ -d $containerdir ]; then
+		unset NAME STOP_PRE_CMD STOP_PRE_OUT_CMD STOP_POST_CMD STOP_POST_OUT_CMD
 		cd $containerdir && source INFO && export $(cut -d= -f1 INFO | grep -v \#)
 		if [ -f $containerdir/Dockerfile* ]; then
 			if [ ! -z "$(docker ps -a --filter "name=${prefix}$NAME$" --filter status=running -q)" ]; then
+				[ ! -z "$STOP_PRE_CMD" ] && waiter docker exec ${NAME} $STOP_PRE_CMD "${prefixlog}Executing pre in task"
+				[ ! -z "$STOP_PRE_OUT_CMD" ] && waiter eval "$STOP_PRE_OUT_CMD" "${prefixlog}Executing pre out task"
 				waiter docker stop -t 4 ${prefix}$NAME "Stopping $1 container"
 				$remove && waiter docker rm -f ${prefix}$NAME "Removing $1 container"
 			elif [ ! -z "$(docker ps -a --filter "name=${prefix}$NAME" -aq)" ] && $remove; then
@@ -116,6 +132,10 @@ function stop {
 			waiter docker-compose down --remove-orphans "Stopping $1 containers pool"
 			$remove && waiter docker-compose rm -f -v "Removing $1 containers pool"
 		fi
+
+		[ ! -z "$STOP_POST_OUT_CMD" ] && waiter eval "$STOP_POST_OUT_CMD" "${prefixlog}Execing external post scripts"
+
+		unset NAME STOP_PRE_CMD STOP_PRE_OUT_CMD STOP_POST_OUT_CMD
 		cd - >/dev/null
 	else
 		echo "<stop> $1 not found."
@@ -127,7 +147,7 @@ function build {
 	containerdir=$servicesdir/${prefix}$1
 	if [ -d $containerdir -a -f $containerdir/Dockerfile ]; then
 		cd $containerdir && source INFO && export $(cut -d= -f1 INFO | grep -v \#) NAME="$(echo $NAME | tr _ /)"
-		base_image=$(cat Dockerfile | grep FROM | grep -v $prefix | cut -d' ' -f2)
+		base_image=$(cat Dockerfile | grep -m 1 ^FROM | grep -v $prefix | cut -d' ' -f2)
 
 		if $remove && [ ! -z "$base_image" ]; then
 			waiter docker pull $base_image "Pulling $1 base image"
@@ -140,8 +160,24 @@ function build {
 		fi
 		[ ! -d "$build_dir" -a ! -z "$CREATE_DATADIR" ] && waiter mkdir -p $build_dir "Creating datadir for $1"
 
-		waiter docker build --network=host -t $provider/$NAME:$VERSION $($remove && echo "--no-cache") -f $containerdir/Dockerfile --rm $(echo $OPTS) $build_dir "Building $1 image"
-		[ ! -z "$VERSION" ] && waiter docker tag $provider/$NAME:$VERSION $provider/$NAME:latest "Configuring $1 image"
+		waiter docker build --network=host -t $provider/$NAME:$VERSION $($remove && echo "--no-cache") -f $containerdir/Dockerfile --rm --force-rm $(echo $OPTS) $build_dir "Building $1 image"
+
+		if $slim && [ ! -z "$(which slim)" ]; then
+			waiter slim --report off build --target $provider/$NAME:$VERSION --tag $provider/$NAME:slim "Optimizing $1 image"
+			if [ $ret -eq 0 ] && $remove; then
+				baseImageId=$(docker images $base_image -q)
+				builtImageTags=$(docker images $provider/$NAME --format "{{.ID}} {{.Repository}}:{{.Tag}}" | grep -v slim | cut -d' ' -f2 | tr '\n' ' ')
+				waiter eval "docker rmi -f $builtImageTags $baseImageId; \
+					docker tag $provider/$NAME:slim $provider/$NAME:$VERSION; \
+					docker tag $provider/$NAME:slim $provider/$NAME:latest" "Configuring $1 image"
+			else
+				[ ! -z "$VERSION" ] && waiter docker tag $provider/$NAME:$VERSION $provider/$NAME:latest "Configuring $1 image"
+			fi
+		else
+			[ ! -z "$VERSION" ] && waiter docker tag $provider/$NAME:$VERSION $provider/$NAME:latest "Configuring $1 image"
+		fi
+
+
 		cd - >/dev/null && unset NAME VERSION OPTS
 	elif [ -d $containerdir -a ! -f $containerdir/Dockerfile ]; then
 		echo "$1 meant to be use by another image."
@@ -198,7 +234,8 @@ function status {
 function update {
 	list="$(docker inspect -f '{{.Name}}/{{range .NetworkSettings.Networks}}{{.IPAddress}}/{{.GlobalIPv6Address}}{{end}}' $(docker ps -q) | grep -v '\/\/' | sed 's/^.//')"
 	#list="$(docker network inspect bridge | jq -r '.[0].Containers')"
-	hosts=""
+	gw="$(docker network inspect bridge | jq -r '.[0].IPAM.Config[0].Gateway')"
+	hosts=$(echo -e "$gw$(printf %20s)ans.docker\n")
 
 	while IFS='\n' read -r line; do
 		IFS='/' read -r name v4 v6 <<< "$line"
@@ -212,9 +249,39 @@ function update {
 		((count++))
 	done <<< "$list"
 
-	echo "${hosts}" > ${servicesdir}/docker.hosts
+	echo -e "127.0.0.1 alwaysadavalidline\n${hosts}" > ${servicesdir}/docker.hosts
 	echo wrote config
 }
+
+function upgrade {
+	[ -z "$1" ] && help && exit -1
+	containerdir=$servicesdir/${prefix}$1
+	if [ -d $containerdir -a -f $containerdir/INFO -a -f $containerdir/Dockerfile ]; then
+		cd $containerdir && source INFO && export $(cut -d= -f1 INFO | grep -v \#) NAME="$(echo $NAME | tr _ /)"
+		sourceImage=$(cat Dockerfile | grep FROM  | grep -v \# | cut -d' ' -f2)
+
+		if ! [ -z "$sourceImage" ]; then
+			localDigest=$(docker image inspect $sourceImage | jq -r '.[0].Id')
+			remoteDigest=$(docker manifest inspect --verbose $sourceImage | jq -r "if type == \"array\" then .[] | select(.Descriptor.platform.architecture == \"$arch\" and .Descriptor.platform.os == \"linux\" ) .SchemaV2Manifest.config.digest else .SchemaV2Manifest.config.digest end")
+
+			if [ ! -z "$remoteDigest" ] && [ "$localDigest" != "$remoteDigest" ]; then
+				echo "$1: remote image differs, rebuilding..."
+				export remove=true
+				build $1
+				return 2
+			fi
+			echo "$1: nothing to do."
+			return 1
+		else
+			echo "$1: could not find source image."
+			return 1
+		fi
+	else
+		echo "$1: not found."
+		return 1
+	fi
+}
+
 
 function mbackup {
 	backs=$(find ${backupdir}/${prefix}$1 -name "$2*.tar.gz")
@@ -332,7 +399,13 @@ function waiter {
 		log=$($prog 2>&1)
 		ret=$?
 		kill -13 $pid
-		[ $ret -ne 0 ] && echo -e "\r${@: -1} \e[0;31mfailed\n$log\e[0m" || echo -e "\r${@: -1} \e[0;32mfinished\e[0m"
+		if [ $ret -ne 0 ] && [ $ret -ne 2 ]; then
+			echo -e "\r${@: -1} \e[0;31m✗\n$log\e[0m"
+		elif [ $ret -eq 2 ]; then
+			echo -e "\r${@: -1} \e[0;32m✓\e[0m\n$log\e[0m"
+		else
+			echo -e "\r${@: -1} \e[0;32m✓\e[0m"
+		fi
 		tput cnorm &>/dev/null
 		trap - INT
 	else
@@ -366,17 +439,18 @@ Options:
 
 function main {
 	case "$1" in
-		reset)build $2;stop $2;save=$remove;remove=false;start $2;remove=$save;$0 update;;
-		start)start $2;$0 update;;
-		stop)stop $2;;
-		status)status $2;;
-		restart)stop $2;start $2;$0 update;;
-		build)build $2;;
-		push)push $2;;
-		tag)tag $2 $3 $4;;
+		reset)check;build $2;stop $2;save=$remove;remove=false;start $2;remove=$save;$0 update;;
+		start)check;start $2;$0 update;;
+		stop)check;stop $2;;
+		status)check;status $2;;
+		restart)check;stop $2;start $2;$0 update;;
+		build)check;build $2;;
+		push)check;push $2;;
+		tag)check;tag $2 $3 $4;;
 		update)waiter update "Updating container's ip";;
-		enter)enter $2;;
-		log)log $2;;
+		upgrade)waiter upgrade $2 "Checking for newer image";;
+		enter)check;enter $2;;
+		log)check;log $2;;
 		list)echo ${services[@]};;
 		backup)backup $2;;
 		self-update)waiter updateme $2 "Upgrading docks";;
@@ -390,9 +464,10 @@ function main {
 [[ $@ == *'-v'* || $@ == *'--verbose'* ]] && export verbose=true || export verbose=false
 [[ $@ == *'-f'* || $@ == *'--force-pull'* ]] && export forcepull=true || export forcepull=false
 [[ $@ == *'-r'* || $@ == *'--rm'* ]] && export remove=true || export remove=false
-[[ $@ == *'-d'* || $@ == *'--dependency'* ]] && export dependency=true || export dependency=false
+[[ $@ == *'-d'* || $@ == *'--dependency'* || $dependency == 'true' ]] && export dependency=true || export dependency=false
 [[ $@ == *'-c'* || $@ == *'--color'* ]] && export color=true || export color=false
 [[ $@ == *'-a'* || $@ == *'--always'* ]] && export always=true || export always=false
+[[ $@ == *'-s'* || $@ == *'--slim'* ]] && export slim=true || export slim=false
 
 export ret;
 
