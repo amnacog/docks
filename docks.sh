@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 cd $(dirname $0)
 
 script=$(basename $(echo $0))
@@ -210,24 +209,39 @@ function push {
 function status {
 	function print {
 		if $color; then
-			docker inspect ${prefix}$1 | jq -r '.[0].NetworkSettings.IPAddress'
+			echo $3
 		else
-		[ $2 -eq 0 ] && echo -e "[\033[0;32mOK\033[0m] $1 is running on $(docker inspect ${prefix}$1 | jq -r '.[0].NetworkSettings.IPAddress')" ||
+		[ $2 -eq 1 ] && echo -e "[\033[0;32mOK\033[0m] $1 is running $([ ! -z $3 ] && echo on $3)" ||
 			echo -e "[\033[0;31mKO\033[0m] $1 is not running."
 		fi
 	}
+
+	mapfile -t running < <(docker ps --filter "name=^${prefix}" --format '{{.Names}}\t{{.Status}}')
+	containersIp=$(docker network inspect bridge)
+
 	if [ -z "$1" ]; then
-		list=$(docker ps)
 		for dir in $services; do
 			if [ -f $servicesdir/${prefix}$dir/start.sh ]; then
-				echo "$list" | grep "$(echo $dir)" | grep -q "Up"
-				print $dir $?
+				status=0
+				for line in "${running[@]}"; do
+					IFS=$'\t' read -r name statusStr <<< "$line"
+					if [ "$name" == "${prefix}${dir}" ]; then
+						[[ "$statusStr" =~ ^Up* ]] && status=1 && break
+					fi
+				done
+				print "$dir" $status "$(echo $containersIp | jq ".[0].Containers[] | select (.Name == \"${prefix}${dir}\") | .IPv4Address" -r | cut -d'/' -f1)"
 			fi
 		done
 	else
-		echo $services | tr _ / | grep -q "$1" || { echo "$1 not found." && return; }
-		docker ps | grep $1 | grep -q "Up"
-		print "$1" $?
+		echo "$services" | tr ' ' '\n' | grep -Fx "$1" >/dev/null || { echo "$1 not found." && return; }
+		status=0
+		for line in "${running[@]}"; do
+			IFS=$'\t' read -r name statusStr <<< "$line"
+			if [ "$name" == "${prefix}$1" ]; then
+				[[ "$statusStr" =~ ^Up* ]] && status=1 && break
+			fi
+		done
+		print "$1" $status "$(echo $containersIp | jq ".[0].Containers[] | select (.Name == \"${prefix}$1\") | .IPv4Address" -r | cut -d'/' -f1)"
 	fi
 }
 
